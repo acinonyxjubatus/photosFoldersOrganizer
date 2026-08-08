@@ -8,7 +8,7 @@
 set +e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT_UNDER_TEST="$SCRIPT_DIR/phone_photos_sync_3.sh"
+SCRIPT_UNDER_TEST="$SCRIPT_DIR/phone_photos_sync.sh"
 
 # ============================================
 # Подключаем тестируемый скрипт
