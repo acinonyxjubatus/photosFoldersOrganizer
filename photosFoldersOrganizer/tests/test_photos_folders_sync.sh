@@ -1,14 +1,14 @@
 #!/bin/bash
 # ============================================
-# Unit-тесты для folder_sync.sh
-# Запуск: ./test_folder_sync.sh
+# Unit-тесты для photos_folders_sync.sh
+# Запуск: ./test_photos_folders_sync.sh
 # ============================================
 
 # Отключаем set -e, чтобы тесты могли проверять ошибки
 set +e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT_UNDER_TEST="$SCRIPT_DIR/folder_sync.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_UNDER_TEST="$SCRIPT_DIR/src/photos_folders_sync.sh"
 
 # ============================================
 # Подключаем тестируемый скрипт
