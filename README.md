@@ -194,4 +194,4 @@ make uninstall
 
 ## Лицензия
 
-См. [LICENSE](../LICENSE) в корне репозитория.
+См. [LICENSE](LICENSE) в корне репозитория.
