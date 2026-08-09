@@ -2,13 +2,12 @@
 set -euo pipefail
 
 # ============================================
-# Phone Photos Sync v3.3
-# Улучшенная версия с исправлением ошибок v1 и v2
+# Phone Photos Sync v1.0.0
 # Общие функции вынесены в common.sh (включая sync_files)
 # ============================================
 
 SCRIPT_NAME="Phone Photos Sync"
-VERSION="3.3.0"
+VERSION="1.0.0"
 
 # Подключаем общие функции
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,6 +20,11 @@ source "$SCRIPT_DIR/common.sh"
 SOURCE_LABEL="На телефоне"
 COPY_VERB="скачать"
 SOURCE_MSG="с телефона"
+SCAN_MSG="Сканирование файлов на телефоне"
+
+# Параметры повторных попыток adb pull (специфичны для ADB-режима)
+MAX_RETRIES=3
+RETRY_DELAY=2
 
 # Получение списка файлов с телефона
 get_file_list() {

@@ -8,8 +8,8 @@ set -euo pipefail
 # Общие функции вынесены в common.sh (включая sync_files)
 # ============================================
 
-SCRIPT_NAME="Folder Sync"
-VERSION="1.1.0"
+SCRIPT_NAME="Folder Photos Sync"
+VERSION="1.0.0"
 
 # Подключаем общие функции
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,6 +22,7 @@ source "$SCRIPT_DIR/common.sh"
 SOURCE_LABEL="В источнике"
 COPY_VERB="скопировать"
 SOURCE_MSG="из папки"
+SCAN_MSG="Сканирование файлов"
 
 # Получение списка файлов из локальной папки
 get_file_list() {
@@ -43,20 +44,21 @@ get_local_file_list() {
     local src_dir="$1"
     local tmpfile="$2"
 
-    log "Сканирование файлов в папке: $src_dir"
-
     if [ ! -d "$src_dir" ]; then
         warn "Папка не существует: $src_dir"
         return 1
     fi
 
-    # Используем find + stat с GNU-форматом
-    # Формат: %n (имя) | %s (размер) | %y (дата модификации)
-    if find "$src_dir" -maxdepth 1 -type f -exec stat -c '%n|%s|%y' {} \; 2>/dev/null > "$tmpfile"; then
+    # Быстрое сканирование через GNU find -printf (без внешних процессов на файл).
+    # Формат: %p (путь) | %s (размер) | %TY-%Tm-%Td %TH:%TM:%TS (дата модификации)
+    # Формат даты совместим с parse_and_index_files (YYYY-MM-DD HH:MM:SS).
+    # awk с fflush() сбрасывает буфер после каждой строки, чтобы файл рос
+    # построчно — иначе find буферизует вывод и счётчик прогресса не обновляется.
+    if find "$src_dir" -maxdepth 1 -type f -printf '%p|%s|%TY-%Tm-%Td %TH:%TM:%TS\n' 2>/dev/null | awk '{ print; fflush() }' > "$tmpfile"; then
         :
     else
-        # Fallback на ls -l, если stat -c не поддерживается
-        ls -l "$src_dir" 2>/dev/null | grep -v '^d' | grep -v '^total' | awk '{print $NF"|"$5"|"$6" "$7" "$8}' > "$tmpfile" || true
+        # Fallback: find -exec stat (медленнее, но работает без GNU -printf)
+        find "$src_dir" -maxdepth 1 -type f -exec stat -c '%n|%s|%y' {} \; 2>/dev/null | awk '{ print; fflush() }' > "$tmpfile" || true
     fi
 
     # Проверяем, что получили данные

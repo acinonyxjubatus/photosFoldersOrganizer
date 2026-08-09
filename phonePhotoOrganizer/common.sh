@@ -16,6 +16,7 @@
 #   SOURCE_LABEL   — подпись источника в конфликтах (например, "На телефоне")
 #   COPY_VERB      — глагол для сообщений об ошибках (например, "скачать")
 #   SOURCE_MSG     — "с телефона" / "из папки" (для сообщения о неудаче списка)
+#   SCAN_MSG       — сообщение при сканировании (например, "Сканирование файлов на телефоне")
 # ============================================
 
 # ============================================
@@ -27,8 +28,6 @@ DRY_RUN=false
 VERBOSE=false
 SKIP_ALL_EXISTING=false
 ASSUME_YES=false
-MAX_RETRIES=3
-RETRY_DELAY=2
 
 # Цвета
 RED='\033[0;31m'
@@ -148,40 +147,165 @@ parse_and_index_files() {
     local raw_file="$1"
     local parsed_file="$2"
 
-    local total_size=0
-    local file_count=0
+    # Один проход awk без внешних процессов на строку.
+    # Раньше использовался bash-цикл с tr/basename на каждую строку —
+    # на 9000+ файлах это давало ~70 тыс. форков и паузу около минуты.
+    # Регулярка даты без интервалов {4} — для совместимости с mawk.
+    # Размеры суммируются в double (точно представляет целые до 2^53).
+    awk -F'|' -v parsed="$parsed_file" '
+    {
+        fullpath = $1; size = $2; raw_date = $3
 
-    while IFS='|' read -r fullpath size raw_date; do
         # Очистка от \r
-        fullpath=$(echo "$fullpath" | tr -d '\r')
-        size=$(echo "$size" | tr -d '\r')
-        raw_date=$(echo "$raw_date" | tr -d '\r')
+        gsub(/\r/, "", fullpath)
+        gsub(/\r/, "", size)
+        gsub(/\r/, "", raw_date)
 
-        [ -z "$fullpath" ] && continue
+        if (fullpath == "") next
 
         # Имя файла (basename)
-        local filename
-        filename=$(basename "$fullpath" 2>/dev/null || echo "$fullpath")
+        n = split(fullpath, parts, "/")
+        filename = parts[n]
 
-        # Парсим дату из формата stat: "YYYY-MM-DD HH:MM:SS.SSSSSSSSS +ZZZZ"
-        # Берём первые 7 символов: YYYY-MM
-        local folder_date="${raw_date:0:7}"
+        # Парсим дату: первые 7 символов YYYY-MM
+        folder_date = substr(raw_date, 1, 7)
 
         # Валидация даты
-        if [[ ! "$folder_date" =~ ^[0-9]{4}-[0-9]{2}$ ]] || \
-           [ "$folder_date" = "1970-01" ] || \
-           [ "$folder_date" = "2038-01" ]; then
-            folder_date="unknown"
-        fi
+        if (folder_date !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]$/ || \
+            folder_date == "1970-01" || folder_date == "2038-01") {
+            folder_date = "unknown"
+        }
 
         # Записываем в нормализованный файл
-        printf "%s|%s|%s\n" "$filename" "$size" "$folder_date" >> "$parsed_file"
+        printf "%s|%s|%s\n", filename, size, folder_date >> parsed
 
-        total_size=$((total_size + size))
-        ((file_count++)) || true
-    done < "$raw_file"
+        total_size += size
+        file_count++
+    }
+    END {
+        printf "%d|%.0f\n", file_count, total_size
+    }
+    ' "$raw_file"
+}
 
-    echo "$file_count|$total_size"
+
+# ============================================
+# Запуск длительной операции со спиннером
+#
+# Использование:
+#   run_with_spinner "Сообщение" [--count <файл>] <функция> [аргументы...]
+#
+# Реализация основана на паттерне github.com/tlatsas/bash-spinner:
+# спиннер крутится в ОТДЕЛЬНОМ фоновом процессе через \b (backspace),
+# а не через \r-перезапись в основном процессе. Это надёжнее работает
+# в IntelliJ IDEA и других псевдо-tty, где \r-обновление строки ненадёжно.
+#
+# Сообщение выводится один раз и ОСТАЁТСЯ на экране. Спиннер крутится
+# на той же строке, в конце выводится [DONE] или [FAIL].
+#
+# С опцией --count <файл> фоновый процесс дополнительно показывает
+# растущий счётчик строк в файле (например "Найдено: 4521").
+#
+# В не-tty режиме (IDE без tty, CI, pipe) выводит сообщение один раз
+# и выполняет функцию синхронно без анимации.
+# ============================================
+
+run_with_spinner() {
+    local message="$1"
+    shift
+
+    local count_file=""
+    if [ "${1:-}" = "--count" ]; then
+        count_file="$2"
+        shift 2
+    fi
+
+    log "$message"
+
+    if [ -t 1 ]; then
+        # Интерактивный терминал: спиннер в фоне.
+        # Если передан --count, строка перезаписывается через \r с растущим
+        # счётчиком (как прогресс-бар — это надёжно работает в IntelliJ IDEA).
+        # Без --count — чистый \b-спиннер (паттерн bash-spinner).
+        # В конце — [DONE]/[FAIL] и перевод строки, чтобы следующее сообщение
+        # начиналось с новой строки.
+        echo -ne "${CYAN}${message}...${NC}"
+
+        (
+            local i=1
+            local sp='\|/-'
+            local delay=0.15
+            local last_n=""
+            while :; do
+                if [ -n "$count_file" ]; then
+                    local n
+                    n=$(wc -l < "$count_file" 2>/dev/null || echo 0)
+                    if [ "$n" != "$last_n" ]; then
+                        # Перезаписываем строку: сообщение + счётчик + спиннер
+                        printf "\r${CYAN}${message}... Найдено: %s ${NC}" "$n"
+                        last_n="$n"
+                    fi
+                fi
+                printf "\b${sp:i++%${#sp}:1}"
+                sleep "$delay"
+            done
+        ) &
+        local spin_pid=$!
+        disown "$spin_pid" 2>/dev/null || true
+
+        # Выполняем операцию синхронно в основном процессе
+        "$@"
+        local status=$?
+
+        # Останавливаем спиннер
+        kill "$spin_pid" 2>/dev/null
+
+        if [ -n "$count_file" ]; then
+            # Перезаписываем строку финальным значением счётчика —
+            # иначе при быстром завершении операции на экране остаётся
+            # устаревшее значение (например, "Найдено: 0").
+            local final_n
+            final_n=$(wc -l < "$count_file" 2>/dev/null || echo 0)
+            printf "\r${CYAN}${message}... Найдено: %s ${NC}" "$final_n"
+            if [ "$status" -eq 0 ]; then
+                echo -e "${GREEN}[DONE]${NC}\n"
+            else
+                echo -e "${RED}[FAIL]${NC}\n"
+            fi
+        else
+            # Финальный статус: [DONE] или [FAIL] + перевод строки,
+            # чтобы следующее сообщение начиналось с новой строки
+            if [ "$status" -eq 0 ]; then
+                echo -e "\b${GREEN}[DONE]${NC}\n"
+            else
+                echo -e "\b${RED}[FAIL]${NC}\n"
+            fi
+        fi
+
+        return $status
+
+    else
+        # Не-tty (IDE без tty, CI, pipe): сообщение + синхронное выполнение.
+        # Если передан --count, показываем построчный прогресс (без \r-анимации).
+        echo -e "${CYAN}${message}...${NC}"
+        if [ -n "$count_file" ]; then
+            "$@" &
+            local pid=$!
+            local last_n=""
+            while kill -0 "$pid" 2>/dev/null; do
+                local n
+                n=$(wc -l < "$count_file" 2>/dev/null || echo 0)
+                if [ "$n" != "$last_n" ]; then
+                    echo "  Найдено: $n"
+                    last_n="$n"
+                fi
+                sleep 0.2
+            done
+            wait "$pid"
+        else
+            "$@"
+        fi
+    fi
 }
 
 # ============================================
@@ -193,26 +317,13 @@ build_local_index() {
     local dst_dir="$1"
     local index_file="$2"
 
-    log "Индексация существующих файлов на ПК..."
     : > "$index_file"
 
-    if [ -t 1 ]; then
-        # На больших коллекциях индексация занимает время — показываем спиннер
-        find "$dst_dir" -type f -printf '%P|%s\n' 2>/dev/null > "$index_file" &
-        local find_pid=$!
-        local spinchars='|/-\'
-        local i=0
-        while kill -0 "$find_pid" 2>/dev/null; do
-            printf "\r${CYAN}Индексация существующих файлов на ПК... %s${NC}" "${spinchars:i%4:1}"
-            sleep 0.1
-            ((i++)) || true
-        done
-        wait "$find_pid" 2>/dev/null || true
-        clear_progress_line
-    else
-        # Используем find с разделителем |
-        find "$dst_dir" -type f -printf '%P|%s\n' 2>/dev/null > "$index_file" || true
-    fi
+    # На больших коллекциях индексация занимает время — показываем спиннер со счётчиком.
+    # awk с fflush() сбрасывает буфер после каждой строки, чтобы файл рос построчно
+    # и счётчик прогресса обновлялся в реальном времени.
+    run_with_spinner "Индексация существующих файлов на ПК" --count "$index_file" \
+        find "$dst_dir" -type f -printf '%P|%s\n' 2>/dev/null | awk '{ print; fflush() }' > "$index_file" || true
 
     local count
     count=$(wc -l < "$index_file" 2>/dev/null || echo 0)
@@ -223,6 +334,14 @@ build_local_index() {
 # ============================================
 # Прогресс-бар
 # ============================================
+
+# Кэш для draw_progress: numfmt и tput — внешние процессы, вызывать их
+# на каждый файл слишком дорого (на 9000+ файлах это десятки тысяч форков).
+_DP_CACHE_COPIED_SIZE=-1
+_DP_CACHE_COPIED_H=""
+_DP_CACHE_TOTAL_SIZE=-1
+_DP_CACHE_TOTAL_H=""
+_DP_CACHE_TERM_WIDTH=""
 
 draw_progress() {
     local current=$1
@@ -236,14 +355,28 @@ draw_progress() {
         percent=$((current * 100 / total))
     fi
 
+    # Человекочитаемые размеры — пересчитываем только при изменении значения
     local copied_h total_h
-    copied_h=$(numfmt --to=iec --suffix=B "$copied_size" 2>/dev/null || echo "${copied_size}B")
-    total_h=$(numfmt --to=iec --suffix=B "$total_size" 2>/dev/null || echo "${total_size}B")
+    if [ "$copied_size" != "$_DP_CACHE_COPIED_SIZE" ]; then
+        _DP_CACHE_COPIED_H=$(numfmt --to=iec --suffix=B "$copied_size" 2>/dev/null || echo "${copied_size}B")
+        _DP_CACHE_COPIED_SIZE=$copied_size
+    fi
+    copied_h="$_DP_CACHE_COPIED_H"
+    if [ "$total_size" != "$_DP_CACHE_TOTAL_SIZE" ]; then
+        _DP_CACHE_TOTAL_H=$(numfmt --to=iec --suffix=B "$total_size" 2>/dev/null || echo "${total_size}B")
+        _DP_CACHE_TOTAL_SIZE=$total_size
+    fi
+    total_h="$_DP_CACHE_TOTAL_H"
 
-    # Определяем ширину терминала (fallback 80)
-    local term_width="${COLUMNS:-}"
-    [ -z "$term_width" ] && term_width=$(tput cols 2>/dev/null || echo 80)
-    [ "$term_width" -lt 40 ] && term_width=40
+    # Определяем ширину терминала один раз за запуск (fallback 80)
+    local term_width="$_DP_CACHE_TERM_WIDTH"
+    if [ -z "$term_width" ]; then
+        term_width="${COLUMNS:-}"
+        [ -z "$term_width" ] && term_width=$(tput cols 2>/dev/null || echo 80)
+        [ "$term_width" -lt 40 ] && term_width=40
+        _DP_CACHE_TERM_WIDTH=$term_width
+    fi
+
 
     # Длина неизменных частей строки:
     # "[ctr] " + " xxx% " + "| " + " | " + "copied / total"
@@ -310,8 +443,8 @@ sync_files() {
     if ! declare -F get_file_list >/dev/null 2>&1 || ! declare -F copy_file >/dev/null 2>&1; then
         error_exit "Ошибка конфигурации: не определены колбэки get_file_list/copy_file"
     fi
-    if [ -z "${SOURCE_LABEL:-}" ] || [ -z "${COPY_VERB:-}" ] || [ -z "${SOURCE_MSG:-}" ]; then
-        error_exit "Ошибка конфигурации: не определены SOURCE_LABEL/COPY_VERB/SOURCE_MSG"
+    if [ -z "${SOURCE_LABEL:-}" ] || [ -z "${COPY_VERB:-}" ] || [ -z "${SOURCE_MSG:-}" ] || [ -z "${SCAN_MSG:-}" ]; then
+        error_exit "Ошибка конфигурации: не определены SOURCE_LABEL/COPY_VERB/SOURCE_MSG/SCAN_MSG"
     fi
 
     # Временные файлы
@@ -328,8 +461,8 @@ sync_files() {
     }
     trap cleanup_files EXIT
 
-    # 1. Получаем список файлов
-    if ! get_file_list "$src_dir" "$raw_list"; then
+    # 1. Получаем список файлов (со спиннером и счётчиком в интерактивном терминале)
+    if ! run_with_spinner "$SCAN_MSG" --count "$raw_list" get_file_list "$src_dir" "$raw_list"; then
         error_exit "Не удалось получить список файлов $SOURCE_MSG.\nПроверьте путь: $src_dir"
     fi
 
