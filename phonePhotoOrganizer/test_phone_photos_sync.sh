@@ -191,6 +191,7 @@ reset_args() {
     VERBOSE=false
     SKIP_ALL_EXISTING=false
     ASSUME_YES=false
+    LOG_ENABLED=false
 }
 
 reset_args
@@ -203,6 +204,13 @@ assert_eq "true" "$SKIP_ALL_EXISTING" "SKIP_ALL_EXISTING (-s)"
 assert_eq "true" "$ASSUME_YES" "ASSUME_YES (-y)"
 
 reset_args
+parse_args -l /sdcard/DCIM/Camera /home/user/Pictures
+assert_eq "true" "$LOG_ENABLED" "LOG_ENABLED (-l)"
+reset_args
+parse_args --logs /sdcard/DCIM/Camera /home/user/Pictures
+assert_eq "true" "$LOG_ENABLED" "LOG_ENABLED (--logs)"
+reset_args
+
 parse_args /sdcard/DCIM/Camera/ /home/user/Pictures/
 assert_eq "/sdcard/DCIM/Camera" "$SRC_DIR" "SRC_DIR без завершающего слэша"
 assert_eq "/home/user/Pictures" "$DST_DIR" "DST_DIR без завершающего слэша"

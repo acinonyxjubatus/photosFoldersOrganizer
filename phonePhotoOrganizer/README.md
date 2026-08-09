@@ -19,7 +19,7 @@
 Оба скрипта используют общий набор функций из `common.sh`:
 
 - Прогресс-бар с именем файла, процентом и скопированным объёмом
-- Логирование каждой операции в `~/.phone_sync/`
+- Логирование каждой операции в `~/.phone_sync/` (опционально, флаг `-l/--logs`)
 - Парсинг метаданных файлов и нормализация дат в `YYYY-MM/`
 - Индексация уже существующих файлов для мгновенного пропуска
 - Разрешение конфликтов (размер не совпадает): перезаписать / пропустить / пропустить все
@@ -68,6 +68,7 @@
 | `-v, --verbose`   | Verbose output                                     |
 | `-s, --skip-all`  | Skip all existing files without asking             |
 | `-y, --yes`       | Non-interactive mode — answer "yes" to all prompts |
+| `-l, --logs`      | Save a log file to `~/.phone_sync/`                |
 | `-h, --help`      | Show help                                          |
 
 ### Examples
@@ -116,6 +117,7 @@
 | `-v, --verbose`   | Verbose output                                     |
 | `-s, --skip-all`  | Skip all existing files without asking             |
 | `-y, --yes`       | Non-interactive mode — answer "yes" to all prompts |
+| `-l, --logs`      | Save a log file to `~/.phone_sync/`                |
 | `-h, --help`      | Show help                                          |
 
 ### Examples

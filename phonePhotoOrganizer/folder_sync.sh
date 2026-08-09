@@ -87,6 +87,7 @@ ${BLUE}${SCRIPT_NAME} v${VERSION}${NC}
     -v, --verbose      Подробный вывод
     -s, --skip-all     Пропускать все существующие файлы без запроса
     -y, --yes          Не задавать вопросов (автоматическое подтверждение)
+    -l, --logs         Сохранять лог в ~/.phone_sync/
     -h, --help         Показать эту справку
 
 ПРИМЕРЫ:
@@ -104,8 +105,8 @@ EOF
 # ============================================
 
 main() {
-    init "$@"
     parse_args "$@"
+    init "$@"
 
     echo -e "${BLUE}====================================================${NC}"
     echo -e "${BLUE}  ${SCRIPT_NAME} v${VERSION}${NC}"
@@ -119,7 +120,7 @@ main() {
     sync_files "$SRC_DIR" "$DST_DIR"
 
     echo ""
-    echo -e "${GREEN}Лог сохранён в: $LOG_FILE${NC}"
+    [ "$LOG_ENABLED" = true ] && echo -e "${GREEN}Лог сохранён в: $LOG_FILE${NC}"
 }
 
 # Запуск только при прямом выполнении (не при source для тестов)

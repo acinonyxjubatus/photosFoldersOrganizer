@@ -23,7 +23,10 @@
 # Конфигурация
 # ============================================
 LOG_DIR="$HOME/.phone_sync"
-LOG_FILE="$LOG_DIR/sync_$(date +%Y%m%d_%H%M%S).log"
+# Лог по умолчанию выключен. Включается флагом -l/--logs: при этом LOG_FILE
+# вычисляется в init() (не при source), чтобы не делать лишний date-форк.
+LOG_FILE=""
+LOG_ENABLED=false
 DRY_RUN=false
 VERBOSE=false
 SKIP_ALL_EXISTING=false
@@ -42,6 +45,8 @@ NC='\033[0m'
 # ============================================
 
 log() {
+    [ "$LOG_ENABLED" = true ] || return 0
+    [ -n "$LOG_FILE" ] || return 0
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"
 }
 
@@ -78,9 +83,12 @@ verbose() {
 # ============================================
 
 init() {
-    mkdir -p "$LOG_DIR"
-    log "=== $SCRIPT_NAME v$VERSION ==="
-    log "Args: $*"
+    if [ "$LOG_ENABLED" = true ]; then
+        mkdir -p "$LOG_DIR"
+        LOG_FILE="$LOG_DIR/sync_$(date +%Y%m%d_%H%M%S).log"
+        log "=== $SCRIPT_NAME v$VERSION ==="
+        log "Args: $*"
+    fi
 }
 
 # ============================================
@@ -107,6 +115,10 @@ parse_args() {
                 ;;
             -y|--yes)
                 ASSUME_YES=true
+                shift
+                ;;
+            -l|--logs)
+                LOG_ENABLED=true
                 shift
                 ;;
             -h|--help)
