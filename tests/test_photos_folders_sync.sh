@@ -101,7 +101,8 @@ get_local_file_list "$SRC" "$TMP"
 assert_eq "1" "$?" "Пустая папка -> exit 1"
 
 # Несуществующая папка -> ошибка
-get_local_file_list "$SRC/nonexistent" "$TMP"
+# Предупреждение о несуществующей папке — ожидаемое поведение, подавляем stderr
+get_local_file_list "$SRC/nonexistent" "$TMP" 2>/dev/null
 assert_eq "1" "$?" "Несуществующая папка -> exit 1"
 
 # Папка с файлами
@@ -300,7 +301,8 @@ setup_sync_test
 mkdir -p "$DST/2024-01"
 printf 'data' > "$DST/2024-01/IMG_20240101.jpg"
 
-echo "data" > "$SRC/IMG_20240101.jpg"
+# 4 байта без \n — чтобы размер совпал с файлом в назначении (иначе возникнет конфликт и read зависнет)
+printf 'data' > "$SRC/IMG_20240101.jpg"
 touch -m -d "2024-01-01 12:00:00" "$SRC/IMG_20240101.jpg"
 
 sync_files "$SRC" "$DST" > /dev/null 2>&1
