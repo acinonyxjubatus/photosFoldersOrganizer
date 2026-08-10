@@ -11,8 +11,10 @@ set -euo pipefail
 SCRIPT_NAME="Folder Photos Sync"
 VERSION="0.1.0"
 
-# Подключаем общие функции
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Подключаем общие функции.
+# readlink -f раскрывает симлинк (установка через Makefile создаёт
+# символьные ссылки в /usr/local/bin), иначе common.sh не найдётся.
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 # ============================================

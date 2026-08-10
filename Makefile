@@ -8,20 +8,30 @@ BINDIR  = $(PREFIX)/bin
 
 SCRIPTS = photos_phone_sync.sh photos_folders_sync.sh
 
-.PHONY: test install uninstall clean
+.PHONY: test test-phone test-folders lint install uninstall clean
 
-# Запуск всех тестов
-test:
+# Запуск всех тестов (останавливается при первом провале)
+test: test-phone test-folders
+
+# Запуск тестов по отдельности
+test-phone:
 	./tests/test_photos_phone_sync.sh
+
+test-folders:
 	./tests/test_photos_folders_sync.sh
 
+# Статический анализ (shellcheck, если установлен)
+lint:
+	command -v shellcheck >/dev/null 2>&1 && shellcheck src/*.sh tests/*.sh || echo "shellcheck не установлен; пропускаю"
+
 # Установка: все файлы в общую директорию + симлинки в bin
-install:
-	install -d $(DESTDIR)$(LIBDIR)
-	install -m 755 src/common.sh src/$(SCRIPTS) $(DESTDIR)$(LIBDIR)/
-	install -d $(DESTDIR)$(BINDIR)
-	ln -sf $(LIBDIR)/photos_phone_sync.sh  $(DESTDIR)$(BINDIR)/photos-phone-sync
-	ln -sf $(LIBDIR)/photos_folders_sync.sh $(DESTDIR)$(BINDIR)/photos-folders-sync
+install: test
+	mkdir -p $(DESTDIR)$(LIBDIR)
+	install -m 644 src/common.sh $(DESTDIR)$(LIBDIR)/
+	install -m 755 $(addprefix src/,$(SCRIPTS)) $(DESTDIR)$(LIBDIR)/
+	mkdir -p $(DESTDIR)$(BINDIR)
+	ln -sfn $(LIBDIR)/photos_phone_sync.sh  $(DESTDIR)$(BINDIR)/photos-phone-sync
+	ln -sfn $(LIBDIR)/photos_folders_sync.sh $(DESTDIR)$(BINDIR)/photos-folders-sync
 
 # Удаление установленных файлов
 uninstall:
