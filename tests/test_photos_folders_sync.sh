@@ -392,6 +392,26 @@ assert_eq "root" "$(cat "$DST/2024-03/IMG_20240301.jpg")" "Содержимое 
 rm -rf "$SRC" "$DST"
 
 # ============================================
+# Блок 12: Интеграция — cp -p сохраняет mtime
+# ============================================
+begin_test "Интеграция: cp -p сохраняет mtime"
+
+SRC=$(mktemp -d)
+DST=$(mktemp -d)
+setup_sync_test
+
+echo "data" > "$SRC/IMG_20240101.jpg"
+touch -m -d "2024-01-01 12:00:00" "$SRC/IMG_20240101.jpg"
+
+sync_files "$SRC" "$DST" > /dev/null 2>&1
+
+SRC_MTIME=$(stat -c %Y "$SRC/IMG_20240101.jpg")
+DST_MTIME=$(stat -c %Y "$DST/2024-01/IMG_20240101.jpg")
+assert_eq "$SRC_MTIME" "$DST_MTIME" "mtime назначения совпадает с источником (cp -p)"
+
+rm -rf "$SRC" "$DST"
+
+# ============================================
 # Итоговый отчёт
 # ============================================
 echo ""
