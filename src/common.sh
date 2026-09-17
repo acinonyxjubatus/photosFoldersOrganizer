@@ -37,6 +37,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+BRIGHT_BLUE='\033[0;94m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
@@ -445,7 +446,9 @@ draw_progress() {
         line="${line:0:$max_len}"
     fi
 
-    printf "\r${BLUE}%s${NC}" "$line"
+    # Светло-голубой (не BLUE): тёмно-синий теряется на фиолетовом фоне
+    # терминала Ubuntu
+    printf "\r${BRIGHT_BLUE}%s${NC}" "$line"
 }
 
 clear_progress_line() {
