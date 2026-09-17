@@ -13,6 +13,7 @@
 | `src/common.sh` | Общие функции (логирование, прогресс-бар, парсинг, индексация) |
 | `tests/test_photos_phone_sync.sh` | Тесты для `photos_phone_sync.sh` |
 | `tests/test_photos_folders_sync.sh` | Тесты для `photos_folders_sync.sh` |
+| `CHANGELOG.md` | История изменений |
 
 ## Общие функции
 
