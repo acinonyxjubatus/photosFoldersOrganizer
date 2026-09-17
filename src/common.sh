@@ -37,6 +37,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+BRIGHT_BLUE='\033[0;94m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
@@ -152,19 +153,23 @@ parse_args() {
 # ============================================
 # Парсинг и нормализация списка файлов
 # Входной формат:  fullpath|size|raw_date
-# Выходной формат: filename|size|YYYY-MM (или unknown)
+# Выходной формат: filename|size|YYYY-MM (или unknown)[|relpath]
+#   relpath — путь относительно src_dir (например "100APPLE/IMG.jpg"),
+#   добавляется ТОЛЬКО если файл лежит не в корне src_dir.
+#   Для плоских списков формат остаётся 3-польным (обратная совместимость).
 # ============================================
 
 parse_and_index_files() {
     local raw_file="$1"
     local parsed_file="$2"
+    local src_dir="${3:-}"
 
     # Один проход awk без внешних процессов на строку.
     # Раньше использовался bash-цикл с tr/basename на каждую строку —
     # на 9000+ файлах это давало ~70 тыс. форков и паузу около минуты.
     # Регулярка даты без интервалов {4} — для совместимости с mawk.
     # Размеры суммируются в double (точно представляет целые до 2^53).
-    awk -F'|' -v parsed="$parsed_file" '
+    awk -F'|' -v parsed="$parsed_file" -v srcdir="$src_dir" '
     {
         fullpath = $1; size = $2; raw_date = $3
 
@@ -188,8 +193,18 @@ parse_and_index_files() {
             folder_date = "unknown"
         }
 
-        # Записываем в нормализованный файл
-        printf "%s|%s|%s\n", filename, size, folder_date >> parsed
+        # Путь относительно src_dir (для файлов в подпапках).
+        # Пишем 4-е поле только если файл не в корне src_dir —
+        # тогда плоские списки остаются в старом 3-польном формате.
+        relpath = filename
+        if (srcdir != "" && index(fullpath, srcdir "/") == 1) {
+            relpath = substr(fullpath, length(srcdir) + 2)
+        }
+        if (relpath != filename) {
+            printf "%s|%s|%s|%s\n", filename, size, folder_date, relpath >> parsed
+        } else {
+            printf "%s|%s|%s\n", filename, size, folder_date >> parsed
+        }
 
         total_size += size
         file_count++
@@ -431,7 +446,9 @@ draw_progress() {
         line="${line:0:$max_len}"
     fi
 
-    printf "\r${BLUE}%s${NC}" "$line"
+    # Светло-голубой (не BLUE): тёмно-синий теряется на фиолетовом фоне
+    # терминала Ubuntu
+    printf "\r${BRIGHT_BLUE}%s${NC}" "$line"
 }
 
 clear_progress_line() {
@@ -478,9 +495,9 @@ sync_files() {
         error_exit "Не удалось получить список файлов $SOURCE_MSG.\nПроверьте путь: $src_dir"
     fi
 
-    # 2. Парсим и нормализуем
+    # 2. Парсим и нормализуем (src_dir нужен для вычисления relpath подпапок)
     local stats
-    stats=$(parse_and_index_files "$raw_list" "$parsed_list")
+    stats=$(parse_and_index_files "$raw_list" "$parsed_list" "$src_dir")
     local total_files total_size
     total_files=$(echo "$stats" | cut -d'|' -f1)
     total_size=$(echo "$stats" | cut -d'|' -f2)
@@ -526,7 +543,9 @@ sync_files() {
     local errors=0
     local copied_size=0
 
-    while IFS='|' read -r filename size folder_date; do
+    # relpath — путь файла относительно src_dir (4-е поле, есть только
+    # для файлов в подпапках); для плоских списков поле пустое.
+    while IFS='|' read -r filename size folder_date relpath; do
         [ -z "$filename" ] && continue
 
         ((current++)) || true
@@ -600,7 +619,8 @@ sync_files() {
         fi
 
         # Копируем файл через колбэк copy_file
-        local src_path="$src_dir/$filename"
+        # (для файлов в подпапках путь берём из relpath)
+        local src_path="$src_dir/${relpath:-$filename}"
 
         if copy_file "$src_path" "$target_path"; then
             ((copied++)) || true

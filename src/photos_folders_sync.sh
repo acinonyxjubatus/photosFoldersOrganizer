@@ -2,14 +2,16 @@
 set -euo pipefail
 
 # ============================================
-# Folder Sync v0.1
-# Копирование файлов из локальной папки (например, с внешнего HDD)
-# с сортировкой по папкам ГГГГ-ММ/ по дате модификации
-# Общие функции вынесены в common.sh (включая sync_files)
+# Folder Sync
+# Копирование файлов из локальной папки (внешний HDD, iPhone DCIM
+# и т.п.) с сортировкой по папкам ГГГГ-ММ/ по дате модификации.
+# Обход источника рекурсивный (включая все подпапки, без флагов).
+# Общие функции вынесены в common.sh (включая sync_files).
+# История изменений: CHANGELOG.md
 # ============================================
 
 SCRIPT_NAME="Folder Photos Sync"
-VERSION="0.1.0"
+VERSION="0.2.0"
 
 # Подключаем общие функции.
 # readlink -f раскрывает симлинк (установка через Makefile создаёт
@@ -32,8 +34,9 @@ get_file_list() {
 }
 
 # Копирование файла через cp
+# -p сохраняет mtime/права — дата съёмки не теряется при копировании
 copy_file() {
-    cp "$1" "$2"
+    cp -p "$1" "$2"
 }
 
 # ============================================
@@ -51,16 +54,17 @@ get_local_file_list() {
         return 1
     fi
 
+    # Рекурсивное сканирование всех подпапок (например, iPhone DCIM с 100APPLE/...).
     # Быстрое сканирование через GNU find -printf (без внешних процессов на файл).
     # Формат: %p (путь) | %s (размер) | %TY-%Tm-%Td %TH:%TM:%TS (дата модификации)
     # Формат даты совместим с parse_and_index_files (YYYY-MM-DD HH:MM:SS).
     # awk с fflush() сбрасывает буфер после каждой строки, чтобы файл рос
     # построчно — иначе find буферизует вывод и счётчик прогресса не обновляется.
-    if find "$src_dir" -maxdepth 1 -type f -printf '%p|%s|%TY-%Tm-%Td %TH:%TM:%TS\n' 2>/dev/null | awk '{ print; fflush() }' > "$tmpfile"; then
+    if find "$src_dir" -type f -printf '%p|%s|%TY-%Tm-%Td %TH:%TM:%TS\n' 2>/dev/null | awk '{ print; fflush() }' > "$tmpfile"; then
         :
     else
         # Fallback: find -exec stat (медленнее, но работает без GNU -printf)
-        find "$src_dir" -maxdepth 1 -type f -exec stat -c '%n|%s|%y' {} \; 2>/dev/null | awk '{ print; fflush() }' > "$tmpfile" || true
+        find "$src_dir" -type f -exec stat -c '%n|%s|%y' {} \; 2>/dev/null | awk '{ print; fflush() }' > "$tmpfile" || true
     fi
 
     # Проверяем, что получили данные
@@ -81,8 +85,11 @@ ${BLUE}${SCRIPT_NAME} v${VERSION}${NC}
 
 Использование: $0 [ОПЦИИ] <исходная_папка> <папка_назначения_на_ПК>
 
-Копирует файлы из локальной папки (например, внешнего HDD) в папку назначения
-на ПК, организуя их по папкам ГГГГ-ММ/ по дате модификации.
+Копирует файлы из локальной папки (например, внешнего HDD или iPhone DCIM)
+в папку назначения на ПК, организуя их по папкам ГГГГ-ММ/ по дате модификации.
+Обход источника РЕКУРСИВНЫЙ: обрабатываются файлы во всех подпапках
+(например, 100APPLE/, 101APPLE/, ...), раскладка — плоско по ГГГГ-ММ/.
+Дата модификации файлов сохраняется (cp -p).
 
 ОПЦИИ:
     -d, --dry-run      Режим проверки (без реального копирования)
@@ -96,6 +103,7 @@ ${BLUE}${SCRIPT_NAME} v${VERSION}${NC}
     $0 /media/hdd/DCIM/Camera /home/user/Pictures
     $0 -d /media/hdd/DCIM/Camera /home/user/Pictures   # Проверка
     $0 -s /media/hdd/DCIM/Camera /home/user/Pictures   # Автопропуск
+    $0 /mnt/.../iPhone/DCIM /home/user/Pictures        # iPhone DCIM с подпапками
 
 Файлы организуются по папкам: ГГГГ-ММ/
 EOF
