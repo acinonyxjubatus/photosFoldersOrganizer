@@ -51,16 +51,17 @@ get_local_file_list() {
         return 1
     fi
 
+    # Рекурсивное сканирование всех подпапок (например, iPhone DCIM с 100APPLE/...).
     # Быстрое сканирование через GNU find -printf (без внешних процессов на файл).
     # Формат: %p (путь) | %s (размер) | %TY-%Tm-%Td %TH:%TM:%TS (дата модификации)
     # Формат даты совместим с parse_and_index_files (YYYY-MM-DD HH:MM:SS).
     # awk с fflush() сбрасывает буфер после каждой строки, чтобы файл рос
     # построчно — иначе find буферизует вывод и счётчик прогресса не обновляется.
-    if find "$src_dir" -maxdepth 1 -type f -printf '%p|%s|%TY-%Tm-%Td %TH:%TM:%TS\n' 2>/dev/null | awk '{ print; fflush() }' > "$tmpfile"; then
+    if find "$src_dir" -type f -printf '%p|%s|%TY-%Tm-%Td %TH:%TM:%TS\n' 2>/dev/null | awk '{ print; fflush() }' > "$tmpfile"; then
         :
     else
         # Fallback: find -exec stat (медленнее, но работает без GNU -printf)
-        find "$src_dir" -maxdepth 1 -type f -exec stat -c '%n|%s|%y' {} \; 2>/dev/null | awk '{ print; fflush() }' > "$tmpfile" || true
+        find "$src_dir" -type f -exec stat -c '%n|%s|%y' {} \; 2>/dev/null | awk '{ print; fflush() }' > "$tmpfile" || true
     fi
 
     # Проверяем, что получили данные
